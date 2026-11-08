@@ -2,10 +2,11 @@
 
 **A test runner panel for [Tern](https://docs.stencil.so/tern/).** It finds the unit tests in
 a workspace, lists them by file, runs them, and shows each failure's trace next to the
-source line.
+source line. When an agent (or you, in a terminal) runs the tests, the panel opens beside
+it and fills in as they run.
 
 <p align="center">
-  <img src="docs/demo.gif" alt="Test Explorer runs a Python suite: six pass, one fails, one is skipped; selecting the failure shows the AssertionError, the stack and the failing line" width="100%">
+  <img src="docs/agent.gif" alt="An omp agent is asked to run the tests; as it runs .venv/bin/pytest -v, Test Explorer opens beside it, marks each test queued, running and passed, and ends on the failing test's AssertionError and source line" width="100%">
 </p>
 
 ## Install
@@ -34,6 +35,15 @@ and build output).
   that pane's directory.
 - Files pane: **Open with Test Explorer** on a test file opens it with that
   file selected.
+- **Runs in panes, by agents too**: a pytest or unittest run in a pane opened while the
+  plugin is loaded shows in the explorer of its workspace, or opens one beside that pane
+  without taking focus. That covers agents running tests through their shell tools
+  (tried with omp) and you typing `pytest` in a terminal.
+  **Follow test runs in panes (on/off)** in the palette turns it off and on.
+
+<p align="center">
+  <img src="docs/demo.gif" alt="Test Explorer runs a Python suite itself: six pass, one fails, one is skipped; selecting the failure shows the AssertionError, the stack and the failing line" width="100%">
+</p>
 
 | Key | Does |
 | --- | --- |
@@ -64,6 +74,22 @@ runner command lines; `model.luau` holds the tree and applies results;
 (`testview_py.py`, `vitest-reporter.mjs`, `jest-reporter.cjs`). Each writes one
 JSON event per line to the file `$TESTVIEW_OUT` names, which the block reads
 while the run goes on.
+
+Runs in panes report the same events another way. The host's `spawn` hook gives each new
+pane `TESTVIEW_WATCH` (a spool directory in the plugin's data) and puts
+`helpers/python` first on `PYTHONPATH`. Its `sitecustomize.py` only installs an import
+hook: when a process imports pytest's config or unittest's runner,
+`testview_watch.py` adds a reporter that writes the run's events to a new file in the
+spool. The run's output and exit code don't change, and other Python processes load
+nothing more. A `sitecustomize` the environment already has still runs after it.
+`window.luau` polls the spool, and when a run starts in a pane this window shows, it
+hands the file to the explorer of that workspace or opens one beside the pane. The
+explorer follows the file until the run ends (or its process is gone), keeps the
+results, and selects the first failure.
+
+Limits: panes opened before the plugin loaded don't report (open a new one), a shell
+startup file that replaces `PYTHONPATH` turns it off for that shell, and vitest and jest
+runs started outside the explorer are not followed yet.
 
 ## Develop
 

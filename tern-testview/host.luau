@@ -20,11 +20,15 @@ local SCAN_TIMEOUT_MS = 30 * 1000
 local COLLECT_TIMEOUT_MS = 3 * 60 * 1000
 local RUN_TIMEOUT_MS = 60 * 60 * 1000
 local MAX_EVENTS_BYTES = 64 * 1024 * 1024
+-- A followed run whose file stops growing this long gets its process checked.
+local WATCH_QUIET_MS = 5000
 
 local HOME = frameworks.HOME
 local DATA = tern.plugin.data
 local RUNS = DATA .. "/runs"
 local CACHE = DATA .. "/cache"
+-- Runs in panes write their events here (helpers/python/testview_watch.py).
+local WATCH = DATA .. "/watch"
 
 type Job = {
 	kind: "collect" | "run",
@@ -44,6 +48,28 @@ type Job = {
 	seen: { [string]: boolean },
 	current: string?,
 	started: number,
+}
+
+-- A test run started in a pane (by hand or by an agent) that the explorer follows
+-- through the events its reporter writes to `file`.
+type Watch = {
+	file: string,
+	offset: number,
+	suite: Suite?,
+	framework: string,
+	label: string,
+	pid: string?,
+	tests: { [string]: Test },
+	total: number,
+	finished: number,
+	files: { [string]: boolean },
+	current: string?,
+	started: number,
+	grew: number,
+	checking: boolean,
+	-- The run used another framework than the explorer had collected with: collect again
+	-- once it ends, so the whole tree comes back with the run's ids.
+	recollect: boolean,
 }
 
 type State = {
@@ -66,6 +92,9 @@ type State = {
 	runStarted: number?,
 	cached: any,
 	seq: number,
+	-- Runs in panes being followed, and the timer reading them.
+	watches: { Watch },
+	watchTimer: TimerHandle?,
 }
 
 -- A pane id survives Restart; the state object identifies this block run.
@@ -83,11 +112,16 @@ end
 local function retire(state: State)
 	if running[state.cx.pane] == state then
 		running[state.cx.pane] = nil
+		tern.kv.set("explorer:" .. tostring(state.cx.pane), nil)
 	end
 	local job = state.job
 	if job and job.timer then
 		job.timer:cancel()
 		job.timer = nil
+	end
+	if state.watchTimer then
+		state.watchTimer:cancel()
+		state.watchTimer = nil
 	end
 	state.queue = {}
 end
@@ -563,7 +597,8 @@ end
 -- ---------------------------------------------------------------- actions
 
 local function busy(state: State): boolean
-	if state.job and state.job.kind == "run" then
+	-- `watches` is nil in a state an earlier version of the plugin made (hot reload).
+	if state.job and state.job.kind == "run" or #(state.watches or {}) > 0 then
 		return true
 	end
 	for _, j in state.queue do
@@ -692,6 +727,20 @@ local function stop(state: State)
 	end
 	state.queue = kept
 	if job == nil or job.kind ~= "run" then
+		-- A followed run (from a pane or an agent) stops by its process.
+		local stopped = false
+		for _, w in state.watches or {} do
+			if w.pid then
+				spawn({ "/bin/kill", "-TERM", w.pid :: string }, "/", {}, 10000, nil, function()
+					-- Look for the process at the next tick instead of after a quiet spell.
+					w.grew = 0
+				end)
+				stopped = true
+			end
+		end
+		if stopped then
+			state.cx:toast("info", "Stopping the test run")
+		end
 		return
 	end
 	job.stopped = true
@@ -801,6 +850,290 @@ scan = function(state: State)
 	end
 end
 
+-- ---------------------------------------------------------------- runs in panes
+
+-- How a run's command line reads: `pytest -q tests`, `python -m pytest`, `python -m unittest`.
+local function command_of(argv: any, framework: string): string
+	if type(argv) ~= "table" or type(argv[1]) ~= "string" then
+		return framework
+	end
+	local first: string = argv[1]
+	local base = model.basename(first)
+	if base == "__main__.py" then
+		base = "python -m " .. model.basename(model.dirname(first))
+	elseif string.find(first, " ", 1, true) then
+		base = first -- unittest's own `python -m unittest`
+	end
+	local parts = { base }
+	for i = 2, #argv do
+		if type(argv[i]) == "string" then
+			table.insert(parts, argv[i])
+		end
+	end
+	return table.concat(parts, " ")
+end
+
+-- The python suite a run in `cwd` belongs to: the deepest one holding `cwd`, else one
+-- inside it, else any.
+local function suite_for(state: State, cwd: string): Suite?
+	local best, inside, any = nil, nil, nil
+	for _, s in state.suites do
+		if s.kind == "pytest" or s.kind == "unittest" or s.kind == "python" then
+			any = any or s
+			if cwd == s.dir or string.sub(cwd, 1, #s.dir + 1) == s.dir .. "/" then
+				if best == nil or #s.dir > #(best :: Suite).dir then
+					best = s
+				end
+			elseif string.sub(s.dir, 1, #cwd + 1) == cwd .. "/" then
+				inside = inside or s
+			end
+		end
+	end
+	return best or inside or any
+end
+
+local watch_tick: (State) -> ()
+
+-- Ends a followed run: tests it left pending go back to idle, the results are kept, and
+-- the first failure is selected when nothing else is.
+local function finish_watch(state: State, w: Watch)
+	for i, other in state.watches do
+		if other == w then
+			table.remove(state.watches, i)
+			break
+		end
+	end
+	local firstFailed: Test? = nil
+	for _, t in w.tests do
+		if t.status == "queued" or t.status == "running" then
+			t.status = "idle"
+		elseif (t.status == "failed" or t.status == "error") and firstFailed == nil then
+			firstFailed = t
+		end
+	end
+	if firstFailed and state.sel == nil then
+		state.sel = firstFailed.ident
+		reveal(state, firstFailed.ident)
+	end
+	state.lastRun = { at = os.time(), took = tern.now() - w.started }
+	save_cache(state)
+	pcall(tern.fs.remove, w.file)
+	local s = w.suite
+	if w.recollect and s and not busy(state) then
+		table.insert(state.queue, new_job(state, "collect", s))
+		pump(state)
+	end
+end
+
+-- Applies one event of a followed run; true when the view changed.
+local function apply_watch(state: State, w: Watch, ev: { [string]: any }): boolean
+	local s = w.suite :: Suite
+	if ev.ev == "collect" and type(ev.tests) == "table" then
+		for _, it in ev.tests do
+			if type(it) == "table" and type(it.id) == "string" and type(it.file) == "string" then
+				local f = model.file(s, it.file, state.root, HOME)
+				local t = model.test(f, it.id, if type(it.name) == "string" then it.name else it.id, tonumber(it.line))
+				t.status = "queued"
+				t.error, t.output = nil, nil
+				w.tests[t.ident] = t
+				w.files[f.ident] = true
+			end
+		end
+		model.sort(s)
+		w.total = 0
+		for _ in w.tests do
+			w.total += 1
+		end
+		return true
+	elseif ev.ev == "start" and type(ev.id) == "string" then
+		local id: string = ev.id
+		w.current = string.match(id, "::([^:]+)$") or string.match(id, "%.([^%.]+)$") or id
+	end
+	if not model.apply(s, ev, nil, state.root, HOME) then
+		return ev.ev == "start"
+	end
+	if ev.ev == "result" and type(ev.file) == "string" then
+		local f = model.file(s, ev.file, state.root, HOME)
+		local id = if type(ev.id) == "string" then ev.id else tostring(ev.name)
+		local t = f.byId[id]
+		if t then
+			if w.tests[t.ident] == nil then
+				w.tests[t.ident] = t
+			end
+			w.finished += 1
+			w.files[f.ident] = true
+		end
+	end
+	return true
+end
+
+-- Reads what a followed run wrote since the last look; returns whether the view changed
+-- and whether the run is over.
+local function drain_watch(state: State, w: Watch): (boolean, boolean)
+	local ok, data = pcall(tern.fs.read, w.file, MAX_EVENTS_BYTES)
+	if not ok then
+		return false, true
+	end
+	if #data <= w.offset then
+		return false, false
+	end
+	w.grew = tern.now()
+	local changed, over = false, false
+	local pos = w.offset + 1
+	while true do
+		local nl = string.find(data, "\n", pos, true)
+		if nl == nil then
+			break
+		end
+		local line = string.sub(data, pos, nl - 1)
+		local decoded, ev = pcall(tern.json.decode, line)
+		if decoded and type(ev) == "table" then
+			if ev.ev == "watch" then
+				w.framework = if type(ev.framework) == "string" then ev.framework else "pytest"
+				w.label = command_of(ev.argv, w.framework)
+				w.pid = if ev.pid ~= nil then tostring(ev.pid) else nil
+				local cwd = if type(ev.cwd) == "string" then model.norm(ev.cwd) else state.root
+				local s = suite_for(state, cwd)
+				if s == nil then
+					return changed, true
+				end
+				if s.kind ~= w.framework then
+					-- The project runs the other framework now (or was never collected): its
+					-- ids would not match the run's.
+					if s.kind == "pytest" or s.kind == "unittest" then
+						s.files, s.byPath = {}, {}
+					end
+					w.recollect = true
+				end
+				s.kind = w.framework :: model.Kind
+				-- The interpreter the run used works for the project.
+				if type(ev.python) == "string" and (s.python == nil or s.python == "python3") then
+					s.python = ev.python
+				end
+				w.suite = s
+				changed = true
+			elseif ev.ev == "done" then
+				over = true
+			elseif w.suite then
+				changed = apply_watch(state, w, ev) or changed
+			end
+		end
+		pos = nl + 1
+		w.offset = nl
+	end
+	-- Show the tests of the files the run touches, when they are few.
+	local n = 0
+	for _ in w.files do
+		n += 1
+	end
+	if n <= 6 then
+		for ident in w.files do
+			state.open[ident] = true
+		end
+	end
+	return changed, over
+end
+
+-- Whether a run's suite is ready to take its events (scanned and collected).
+local function ready_for(state: State): boolean
+	if state.phase ~= "ready" then
+		return false
+	end
+	if state.job and state.job.kind == "collect" then
+		return false
+	end
+	for _, s in state.suites do
+		if s.phase == "pending" or s.phase == "collecting" then
+			return false
+		end
+	end
+	return true
+end
+
+watch_tick = function(state: State)
+	state.watchTimer = tern.timer(POLL_MS, function()
+		state.watchTimer = nil
+		if not alive(state) then
+			return
+		end
+		local changed = false
+		if ready_for(state) then
+			for _, w in table.clone(state.watches) do
+				local c, over = drain_watch(state, w)
+				changed = changed or c
+				if over then
+					finish_watch(state, w)
+					changed = true
+				elseif tern.now() - w.grew > WATCH_QUIET_MS and w.pid and not w.checking then
+					-- No news for a while: a run killed with ^C writes no `done`.
+					w.checking = true
+					spawn({ "/bin/kill", "-0", w.pid :: string }, "/", {}, 5000, nil, function(r: ProcessResult)
+						w.checking = false
+						w.grew = tern.now()
+						if r.status ~= 0 and table.find(state.watches, w) and alive(state) then
+							finish_watch(state, w)
+							state.cx:render()
+						end
+					end)
+				end
+			end
+		end
+		if changed then
+			state.cx:render()
+		end
+		if #state.watches > 0 then
+			watch_tick(state)
+		end
+	end)
+end
+
+-- Follows the run whose events `file` (in the watch spool) holds.
+local function follow(state: State, file: string)
+	if string.sub(file, 1, #WATCH + 1) ~= WATCH .. "/" or string.find(file, "/../", 1, true) then
+		return
+	end
+	state.watches = state.watches or {}
+	for _, w in state.watches do
+		if w.file == file then
+			return
+		end
+	end
+	table.insert(state.watches, {
+		file = file,
+		offset = 0,
+		suite = nil,
+		framework = "pytest",
+		label = "tests",
+		pid = nil,
+		tests = {},
+		total = 0,
+		finished = 0,
+		files = {},
+		current = nil,
+		started = tern.now(),
+		grew = tern.now(),
+		checking = false,
+		recollect = false,
+	})
+	if state.watchTimer == nil then
+		watch_tick(state)
+	end
+end
+
+-- Panes opened while the plugin is loaded report their Python test runs (see
+-- helpers/python/sitecustomize.py); window.luau opens the explorer when one starts.
+tern.on("spawn", function(spec: SpawnSpec): SpawnSpec?
+	if tern.kv.get("follow") == false then
+		return nil
+	end
+	local helpers = tern.plugin.dir .. "/helpers/python"
+	local sep = if tern.runtime.os == "windows" then ";" else ":"
+	local existing = spec.env.PYTHONPATH or tern.getenv("PYTHONPATH")
+	spec.env.PYTHONPATH = if existing and existing ~= "" then helpers .. sep .. existing else helpers
+	spec.env.TESTVIEW_WATCH = WATCH
+	return spec
+end)
+
 -- ---------------------------------------------------------------- moving
 
 local function move(state: State, list: { Row }, delta: number)
@@ -884,6 +1217,10 @@ local function page(state: State, cx: BlockCx): view.Page
 			label ..= " (+" .. queued .. " more)"
 		end
 		runningInfo = { label = label, done = job.finished, total = job.total, current = job.current }
+	elseif state.watches and #state.watches > 0 then
+		local w = state.watches[1]
+		local more = if #state.watches > 1 then " (+" .. (#state.watches - 1) .. " more)" else ""
+		runningInfo = { label = "Running " .. w.label .. more, done = w.finished, total = w.total, current = w.current }
 	end
 	return {
 		root = state.root,
@@ -949,6 +1286,8 @@ tern.block.define("explorer", {
 			runStarted = nil,
 			cached = load_cache(root),
 			seq = 0,
+			watches = {},
+			watchTimer = nil,
 		}
 		if type(saved) == "table" and saved.root == root then
 			if type(saved.open) == "table" then
@@ -965,6 +1304,12 @@ tern.block.define("explorer", {
 			state.hidePassed = saved.hidePassed == true
 		end
 		running[cx.pane] = state
+		-- window.luau finds the explorer of a workspace here when a run starts in a pane.
+		tern.kv.set("explorer:" .. tostring(cx.pane), root)
+		local watched = args[2] and string.match(args[2], "^watch=(.+)$")
+		if watched then
+			follow(state, watched)
+		end
 		scan(state)
 		return state
 	end,
@@ -1067,6 +1412,11 @@ tern.block.define("explorer", {
 			state.sizes = ev.value
 		elseif ev.ev == "action" then
 			local act = ev.act
+			local followed = if act == "watch" then ev.value elseif type(act) == "string" then string.match(act, "^watch=(.+)$") else nil
+			if type(followed) == "string" then
+				follow(state, followed)
+				return
+			end
 			if act == "runall" then
 				run_all(state)
 			elseif act == "failed" then

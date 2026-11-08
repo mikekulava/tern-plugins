@@ -15,8 +15,9 @@ folder with a `plugin.toml` and Luau sources, installed straight from this repos
     <td width="50%" valign="top">
       <h3><a href="tern-testview">Test Explorer</a></h3>
       <p>Finds pytest, unittest, vitest and jest tests, runs them, and shows each failure's
-      trace next to the source line it failed on.</p>
-      <a href="tern-testview"><img src="tern-testview/docs/demo.gif" alt="Test Explorer demo"></a>
+      trace next to the source line. When an agent runs the tests, it opens beside the
+      agent and fills in live.</p>
+      <a href="tern-testview"><img src="tern-testview/docs/agent.gif" alt="Test Explorer following an agent's test run"></a>
     </td>
   </tr>
 </table>
@@ -34,7 +35,7 @@ Built and tested with Tern 0.9.12.
 | Plugin | Opens with | What it does |
 | --- | --- | --- |
 | [Search Everywhere](tern-searcheverywhere) | <kbd>⇧</kbd> <kbd>⇧</kbd> | Files and declarations in 17 languages, indexed in the background |
-| [Test Explorer](tern-testview) | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>U</kbd> | Test tree, run all / file / one / failed, traces with source |
+| [Test Explorer](tern-testview) | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>U</kbd>, or by itself when tests run in a pane | Test tree, run all / file / one / failed, traces with source; follows agents' pytest and unittest runs |
 
 ## Develop
 

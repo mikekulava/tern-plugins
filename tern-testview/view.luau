@@ -550,6 +550,9 @@ local function summary(page: Page): Node
 		local label: { Span } = { ui.span(r.label, "strong") }
 		if r.total > 0 then
 			table.insert(label, ui.span("  " .. r.done .. "/" .. r.total, "muted mono"))
+		elseif r.done > 0 then
+			-- A followed unittest run doesn't say up front how many tests it has.
+			table.insert(label, ui.span("  " .. r.done .. " done", "muted mono"))
 		end
 		if r.current then
 			table.insert(label, ui.span("  " .. r.current, "muted"))
