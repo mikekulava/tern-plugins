@@ -1,0 +1,14 @@
+schema = 1
+id = "testview"
+name = "Test Explorer"
+version = "0.1.0"
+description = "Finds pytest, unittest, vitest and jest tests, runs them, and shows results by file with expandable traces."
+icon = "list-checks"
+host = "host.luau"
+window = "window.luau"
+styles = ["testview.css"]
+
+[[blocks]]
+id = "explorer"
+title = "Test Explorer"
+files = ["test_*.py", "*_test.py", "*.test.ts", "*.test.tsx", "*.test.js", "*.test.jsx", "*.test.mjs", "*.spec.ts", "*.spec.tsx", "*.spec.js"]

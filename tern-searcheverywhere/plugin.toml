@@ -1,0 +1,12 @@
+schema = 1
+id = "searcheverywhere"
+name = "Search Everywhere"
+version = "0.1.0"
+description = "Double-tap Shift for an overlay that finds files, classes, functions and variables under a folder."
+icon = "search"
+host = "host.luau"
+window = "window.luau"
+
+[[blocks]]
+id = "search"
+title = "Search Everywhere"

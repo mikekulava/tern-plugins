@@ -1,0 +1,8 @@
+/* Tree depth of the explorer's rows: suites, files, tests. */
+[data-surface='plugin.testview.explorer'] .sf-item[data-role='testview.d1'] {
+	padding-left: 22px;
+}
+
+[data-surface='plugin.testview.explorer'] .sf-item[data-role='testview.d2'] {
+	padding-left: 40px;
+}
