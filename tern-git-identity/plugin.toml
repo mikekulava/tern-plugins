@@ -1,0 +1,14 @@
+schema = 1
+id = "git-identity"
+name = "Git Identity"
+version = "0.1.0"
+description = "Pick or add the git user a repository commits as."
+icon = "user"
+host = "host.luau"
+window = "window.luau"
+
+[[blocks]]
+id = "identity"
+title = "Git identity"
+icon = "user"
+palette = false
