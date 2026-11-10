@@ -55,6 +55,15 @@ Todo + Jira, a fork of someone else's plugin, keeps its code in its own reposito
       <a href="tern-git-identity"><img src="tern-git-identity/docs/demo.gif" alt="Adding a git identity and switching a repository to it"></a>
     </td>
   </tr>
+  <tr>
+    <td colspan="2" valign="top">
+      <h3><a href="tern-allure">Allure Report</a></h3>
+      <p>Finds the <code>allure-results</code> folders of a workspace and shows every launch as
+      a report: suites, behaviors and categories, steps that fold open to their attachments,
+      retries and history across runs. It fills in live as tests write their results.</p>
+      <a href="tern-allure"><img src="tern-allure/docs/report.png" alt="A launch of 14 tests: the suites tree beside a failed test's steps with its screenshot open"></a>
+    </td>
+  </tr>
 </table>
 
 ## Install
@@ -64,11 +73,12 @@ tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-searcheverywhe
 tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-testview
 tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-omp-sessions
 tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-git-identity
+tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-allure
 tern plugin install github.com/sneaky-bulgarian/tern-todo
 ```
 
 `tern plugin list` shows what loaded; `tern plugin remove <id>` takes one out again.
-Built and tested with Tern 0.9.12; omp Sessions and Git Identity with 0.9.13.
+Built and tested with Tern 0.9.12; omp Sessions, Git Identity and Allure Report with 0.9.13.
 
 | Plugin | Opens with | What it does |
 | --- | --- | --- |
@@ -77,6 +87,7 @@ Built and tested with Tern 0.9.12; omp Sessions and Git Identity with 0.9.13.
 | [Todo + Jira](tern-todo) | **Todo: open tasks** in the palette | Tasks that open omp sessions in panes; the active Jira sprint as tickets, closed in Jira when their tasks are done |
 | [omp Sessions](tern-omp-sessions) | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>H</kbd>, **sessions** in the status line, or the Files pane's clock button | omp sessions from every folder as a tree, with filter, size and age; resume in a tab or split |
 | [Git Identity](tern-git-identity) | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>Y</kbd>, **git user** in the status line, or the Files pane's person button | Choose or add the git user a repository commits as |
+| [Allure Report](tern-allure) | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>J</kbd>, **Allure** in the status line, or the Files pane's chart button | Allure results as launches, with suites, behaviors, categories, steps, attachments, retries and history |
 
 ## Develop
 

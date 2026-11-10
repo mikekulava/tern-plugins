@@ -1,0 +1,16 @@
+schema = 1
+id = "allure"
+name = "Allure Report"
+version = "0.1.0"
+description = "Finds allure-results folders and shows each launch as a report: suites, behaviors, packages, categories, expandable steps, attachments, retries and history across runs."
+icon = "chart"
+host = "host.luau"
+window = "window.luau"
+styles = ["styles.css"]
+
+[[blocks]]
+id = "report"
+title = "Allure Report"
+icon = "chart"
+files = ["*-result.json", "*-container.json"]
+palette = false

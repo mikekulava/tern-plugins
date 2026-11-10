@@ -1,0 +1,11 @@
+[data-surface='plugin.allure.report'] .sf-trace-line.st-error .sf-trace-line:not(.st-error) > .sf-trace-row .sf-trace-title {
+	color: var(--t1);
+}
+
+[data-surface='plugin.allure.report'] .sf-trace-line.st-error .sf-trace-line.st-done > .sf-trace-row .sf-trace-g {
+	color: var(--sf-ok);
+}
+
+[data-surface='plugin.allure.report'] .sf-trace-line.st-error .sf-trace-line.st-pending > .sf-trace-row .sf-trace-g {
+	color: var(--t4);
+}
