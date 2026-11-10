@@ -45,8 +45,11 @@ local KIND_BONUS: { [string]: number } = {
 
 type Result = {
 	kind: string,
-	-- Path relative to the folder.
-	path: string,
+	-- Path relative to the folder; for index results, made from `idx` and `file` when
+	-- first needed.
+	path: string?,
+	idx: index.Index?,
+	file: number?,
 	name: string,
 	owner: string?,
 	line: number?,
@@ -56,13 +59,18 @@ type Result = {
 	positions: { number }?,
 }
 
+-- Ids that matched, as u32s in a buffer.
+type Hits = { b: buffer, n: number }
+
+-- What the last search matched, to narrow the next one when it only adds characters.
 type Cache = {
 	idx: index.Index,
 	version: number,
-	mode: string,
+	-- The query's kind: prefix or fuzzy, with or without "/" and ".".
+	key: string,
 	q: string,
-	files: { number },
-	syms: { number },
+	files: Hits,
+	syms: Hits,
 }
 
 type State = {
@@ -75,10 +83,14 @@ type State = {
 	sel: number,
 	matched: number,
 	partial: boolean,
+	-- Why the last search failed, when it did.
+	problem: string?,
 	recent: boolean,
 	cache: Cache?,
 	timer: TimerHandle?,
 	last: number,
+	-- How long the last search took (ms): searches while indexing are spaced by it.
+	took: number,
 	closed: boolean,
 	-- The window half on this machine opens the pick (see window.luau).
 	handoff: boolean,
@@ -189,6 +201,16 @@ local function parse_query(raw: string): (string, number?)
 	return text, nil
 end
 
+-- The path of an index result, made on first use.
+local function path_of(r: Result): string
+	local p = r.path
+	if p == nil then
+		p = index.file_path(r.idx :: index.Index, r.file :: number)
+		r.path = p
+	end
+	return p
+end
+
 local function better(a: Result, b: Result): boolean
 	if a.score ~= b.score then
 		return a.score > b.score
@@ -196,8 +218,9 @@ local function better(a: Result, b: Result): boolean
 	if #a.label ~= #b.label then
 		return #a.label < #b.label
 	end
-	if a.path ~= b.path then
-		return a.path < b.path
+	local pa, pb = path_of(a), path_of(b)
+	if pa ~= pb then
+		return pa < pb
 	end
 	return (a.line or 0) < (b.line or 0)
 end
@@ -224,15 +247,34 @@ local function insert_top(top: { Result }, r: Result)
 end
 
 local function result_key(r: Result): string
-	return r.kind .. "\0" .. r.path .. "\0" .. r.name .. "\0" .. tostring(r.line)
+	return r.kind .. "\0" .. path_of(r) .. "\0" .. r.name .. "\0" .. tostring(r.line)
 end
 
--- Searches again for the query. `keep_selection` (index progress) keeps the selected result
--- selected when it still ranks; a changed query starts at the top.
-local function search(state: State, keep_selection: boolean?)
+local function hits(): Hits
+	return { b = buffer.create(4096), n = 0 }
+end
+
+local function push(h: Hits, id: number)
+	local off = h.n * 4
+	local b = h.b
+	if off + 4 > buffer.len(b) then
+		local grown = buffer.create(buffer.len(b) * 2)
+		buffer.copy(grown, 0, b, 0)
+		h.b = grown
+		b = grown
+	end
+	buffer.writeu32(b, off, id)
+	h.n += 1
+end
+
+-- The best a path match can score (a file whose name doesn't match ranks 300 lower).
+local PATH_SCORE_MAX = 1005 + KIND_BONUS.file - 300
+
+local function run_search(state: State, keep_selection: boolean?)
 	local keep = if keep_selection then state.results[state.sel] else nil
 	local keep_key = if keep then result_key(keep) else nil
 	state.partial = false
+	state.problem = nil
 	local text = gsub((parse_query(state.query)), "%s+", "")
 	if text == "" then
 		state.recent = true
@@ -245,51 +287,89 @@ local function search(state: State, keep_selection: boolean?)
 
 	local idx = state.entry.current
 	local q = fuzzy.query(text)
+	local qn = q.n
 	-- One character matches name prefixes only (everything has an `e` in it); two match
 	-- at word starts (`qs` → QuerySet) but not as a loose subsequence.
-	local mode = if q.n == 1 then "prefix" else "fuzzy"
-	local min_score = if q.n == 2 then 300 else -math.huge
+	local prefix = qn == 1
+	local min_score = if qn == 2 then 300 else -math.huge
 	local path_mode = find(text, "/", 1, true) ~= nil
 	local dot_mode = find(text, ".", 1, true) ~= nil
 	local want_files = state.scope ~= "symbols"
 	local want_syms = state.scope ~= "files"
+	local key = (if prefix then "p" else "f") .. (if path_mode then "/" else "") .. (if dot_mode then "." else "")
 
 	local c = state.cache
-	local reuse = c ~= nil and c.idx == idx and c.version == idx.version and c.mode == mode
+	local reuse = c ~= nil and c.idx == idx and c.version == idx.version and c.key == key
 		and sub(q.lower, 1, #c.q) == c.q
-	local paths, lpaths, bases, lbases = idx.paths, idx.lpaths, idx.bases, idx.lbases
-	local names, lnames, lfulls, kinds, files, lines, owners =
-		idx.names, idx.lnames, idx.lfulls, idx.kinds, idx.files, idx.lines, idx.owners
-	local qn, ql = q.n, q.lower
+	local band, readu32, readu8, byte = bit32.band, buffer.readu32, buffer.readu8, string.byte
+	local fbase, fdir, ldirs = idx.fbase, idx.fdir, idx.ldirs
+	local sname, srec, owners = idx.sname, idx.srec, idx.owners
+	local RECORD, CASED, FILE_CASED, KINDS = index.RECORD, index.CASED, index.FILE_CASED, index.KINDS
+	local first_lo = byte(q.chars[1])
+	local up1 = q.upper[1]
+	local first_up = if up1 then byte(up1) else first_lo
 
 	local top: { Result } = {}
 	local matched = 0
 	local t0 = tern.now()
 	local partial = false
+	local file_hits, sym_hits = hits(), hits()
 
-	-- Files.
-	local file_hits: { number } = {}
+	-- Files match on their whole path, folder first, and score on their name, else on the
+	-- path. How many query characters each folder (and its "/") takes is worked out once.
+	local dir_took: { [number]: number } = {}
 	local function try_file(i: number)
+		local packed = readu32(fdir, (i - 1) * 4)
+		local d = band(packed, 0x7FFFFFFF)
+		local cased = packed >= FILE_CASED
+		local base = fbase[i]
 		local hit
-		if mode == "prefix" then
-			hit = sub(lbases[i], 1, qn) == ql or (path_mode and fuzzy.has(lpaths[i], q))
+		if prefix then
+			local b = byte(base, 1)
+			hit = b == first_lo or b == first_up or (path_mode and ldirs[d] ~= "")
 		else
-			hit = fuzzy.has(lpaths[i], q)
+			local took = dir_took[d]
+			if took == nil then
+				local ldir = ldirs[d]
+				took = 0
+				if ldir ~= "" then
+					took = fuzzy.consume(ldir, q, 1, false)
+					if took < qn and q.chars[took + 1] == "/" then
+						took += 1
+					end
+				end
+				dir_took[d] = took
+			end
+			hit = took == qn or fuzzy.consume(base, q, took + 1, cased) == qn - took
 		end
 		if not hit then
 			return
 		end
-		table.insert(file_hits, i)
+		push(file_hits, i)
 		if not want_files then
 			return
 		end
-		local label = if path_mode then paths[i] else bases[i]
-		local score = fuzzy.score(label, if path_mode then lpaths[i] else lbases[i], q)
-		if score == nil and not path_mode then
-			score = fuzzy.score(paths[i], lpaths[i], q)
-			if score then
-				score -= 300
-				label = paths[i]
+		local label, path, score
+		if path_mode then
+			path = index.file_path(idx, i)
+			label = path
+			score = fuzzy.score(path, lower(path), q)
+		else
+			label = base
+			score = fuzzy.score(base, if cased then lower(base) else base, q)
+			if score == nil then
+				if qn > 2 and #top >= LIMIT and top[LIMIT].score > PATH_SCORE_MAX then
+					-- Its path matches (the test above) but can't rank among the shown results:
+					-- counted without making the path.
+					matched += 1
+					return
+				end
+				path = index.file_path(idx, i)
+				score = fuzzy.score(path :: string, lower(path :: string), q)
+				if score then
+					score -= 300
+					label = path :: string
+				end
 			end
 		end
 		if score == nil or score < min_score then
@@ -302,8 +382,10 @@ local function search(state: State, keep_selection: boolean?)
 		end
 		insert_top(top, {
 			kind = "file",
-			path = paths[i],
-			name = bases[i],
+			path = path,
+			idx = idx,
+			file = i,
+			name = base,
 			owner = nil,
 			line = nil,
 			score = score,
@@ -312,43 +394,69 @@ local function search(state: State, keep_selection: boolean?)
 		})
 	end
 
-	-- Declarations.
-	local sym_hits: { number } = {}
+	-- Declarations match on their name; with a "." in the query, the part before the last
+	-- one must match their owner (`Model.save`).
+	local q_owner, q_name = q, q
+	if dot_mode then
+		local before, after = match(text, "^(.*)%.([^.]*)$")
+		q_owner, q_name = fuzzy.query(before or ""), fuzzy.query(after or "")
+	end
+	local owner_ok: { [number]: boolean } = {}
 	local function try_sym(i: number)
+		local off = (i - 1) * RECORD
+		local flags = readu8(srec, off + 12)
+		local cased = flags >= CASED
+		local name = sname[i]
 		local hit
-		if mode == "prefix" then
-			hit = sub(lnames[i], 1, qn) == ql or (dot_mode and sub(lfulls[i], 1, qn) == ql)
+		if prefix then
+			local b = byte(name, 1)
+			hit = b == first_lo or b == first_up
+		elseif dot_mode then
+			local o = readu32(srec, off + 8)
+			if o == 0 then
+				return
+			end
+			local ok = owner_ok[o]
+			if ok == nil then
+				ok = fuzzy.consume(owners[o], q_owner, 1, true) == q_owner.n
+				owner_ok[o] = ok
+			end
+			hit = ok and fuzzy.consume(name, q_name, 1, cased) == q_name.n
 		else
-			hit = fuzzy.has(lfulls[i], q)
+			hit = fuzzy.consume(name, q, 1, cased) == qn
 		end
 		if not hit then
 			return
 		end
-		table.insert(sym_hits, i)
+		push(sym_hits, i)
 		if not want_syms then
 			return
 		end
-		local owner = owners[i]
-		local label, l = names[i], lnames[i]
-		if dot_mode and owner ~= "" then
-			label, l = owner .. "." .. names[i], lfulls[i]
+		local o = readu32(srec, off + 8)
+		local owner = if o ~= 0 then owners[o] else nil
+		local label, l = name, if cased then lower(name) else name
+		if dot_mode and owner then
+			label = owner .. "." .. name
+			l = lower(label)
 		end
 		local score = fuzzy.score(label, l, q)
 		if score == nil or score < min_score then
 			return
 		end
 		matched += 1
-		local kind = kinds[i]
+		local kind = KINDS[band(flags, 0x1F)] or "variable"
 		score += KIND_BONUS[kind] or 0
 		if #top >= LIMIT and score < top[LIMIT].score then
 			return
 		end
 		insert_top(top, {
 			kind = kind,
-			path = paths[files[i]],
-			name = names[i],
-			owner = if owner ~= "" then owner else nil,
-			line = lines[i],
+			path = nil,
+			idx = idx,
+			file = readu32(srec, off),
+			name = name,
+			owner = owner,
+			line = readu32(srec, off + 4),
 			score = score,
 			label = label,
 			positions = nil,
@@ -365,29 +473,30 @@ local function search(state: State, keep_selection: boolean?)
 
 	if reuse then
 		local cache = c :: Cache
-		for k, i in cache.files do
-			try_file(i)
-			if k % 2048 == 0 and over_budget() then
+		local fb, sb = cache.files.b, cache.syms.b
+		for k = 0, cache.files.n - 1 do
+			try_file(readu32(fb, k * 4))
+			if k % 2048 == 2047 and over_budget() then
 				break
 			end
 		end
 		if not partial then
-			for k, i in cache.syms do
-				try_sym(i)
-				if k % 2048 == 0 and over_budget() then
+			for k = 0, cache.syms.n - 1 do
+				try_sym(readu32(sb, k * 4))
+				if k % 2048 == 2047 and over_budget() then
 					break
 				end
 			end
 		end
 	else
-		for i = 1, #paths do
+		for i = 1, idx.nfiles do
 			try_file(i)
 			if i % 2048 == 0 and over_budget() then
 				break
 			end
 		end
 		if not partial then
-			for i = 1, #names do
+			for i = 1, idx.nsyms do
 				try_sym(i)
 				if i % 2048 == 0 and over_budget() then
 					break
@@ -398,10 +507,11 @@ local function search(state: State, keep_selection: boolean?)
 
 	state.cache = if partial
 		then nil
-		else { idx = idx, version = idx.version, mode = mode, q = q.lower, files = file_hits, syms = sym_hits }
+		else { idx = idx, version = idx.version, key = key, q = q.lower, files = file_hits, syms = sym_hits }
 	state.partial = partial
 	state.matched = matched
 	for _, r in top do
+		path_of(r)
 		local _, positions = fuzzy.score(r.label, lower(r.label), q, true)
 		r.positions = positions
 	end
@@ -417,12 +527,33 @@ local function search(state: State, keep_selection: boolean?)
 	end
 end
 
--- Searches again soon (index progress), at most every THROTTLE_MS.
+-- Searches again for the query. `keep_selection` (index progress) keeps the selected result
+-- selected when it still ranks; a changed query starts at the top. A search that fails,
+-- out of memory included, shows no results and says why instead of breaking the overlay.
+local function search(state: State, keep_selection: boolean?)
+	local t0 = tern.now()
+	local ok, err = pcall(run_search, state, keep_selection)
+	state.took = tern.now() - t0
+	if not ok then
+		state.cache = nil
+		state.results = {}
+		state.matched = 0
+		state.sel = 1
+		state.problem = if index.is_oom(err) then "out of memory" else "search failed"
+		if not index.is_oom(err) then
+			tern.log.warn("searcheverywhere: search failed", err)
+		end
+	end
+end
+
+-- Searches again soon (index progress): at most every THROTTLE_MS, and on a big index
+-- not more often than every four times what a search takes.
 local function schedule(state: State)
 	if state.timer then
 		return
 	end
-	local wait = math.max(0, THROTTLE_MS - (tern.now() - state.last))
+	local gap = math.max(THROTTLE_MS, state.took * 4)
+	local wait = math.max(0, gap - (tern.now() - state.last))
 	state.timer = tern.timer(wait, function()
 		state.timer = nil
 		if state.closed then
@@ -451,7 +582,7 @@ local function open_result(state: State, r: Result?)
 	local line = query_line or r.line
 	remember(state, r, if r.kind == "file" then query_line else r.line)
 	close(state)
-	local target = absolute(state, r.path)
+	local target = absolute(state, path_of(r))
 	if line then
 		target ..= "#L" .. line
 	end
@@ -542,15 +673,15 @@ local function item(r: Result, i: number): Node
 		label = highlighted(r.label, r.positions),
 	}
 	if r.kind == "file" then
-		if r.label ~= r.path then
-			local dir = dirname(r.path)
+		if r.label ~= path_of(r) then
+			local dir = dirname(path_of(r))
 			props.detail = { ui.span(if dir == "" then "./" else dir, "muted") }
 		end
 	else
 		if r.owner and r.label == r.name then
 			props.detail = { ui.span(r.owner, "muted") }
 		end
-		props.value = { ui.span(r.path .. (if r.line then ":" .. r.line else ""), "muted mono") }
+		props.value = { ui.span(path_of(r) .. (if r.line then ":" .. r.line else ""), "muted mono") }
 	end
 	return ui.node("item", props)
 end
@@ -587,12 +718,17 @@ local function status(state: State): { Span }
 		table.insert(spans, ui.span(text, style or "muted"))
 	end
 	if idx.phase == "listing" then
-		add("listing files… " .. #idx.paths)
+		add(if idx.nfiles > 0 then "listing files… " .. idx.nfiles else "listing files…")
 	elseif idx.phase == "parsing" then
-		add(string.format("indexing %d/%d", idx.parsed, #idx.paths))
+		add(string.format("indexing %d/%d", idx.parsed, idx.nfiles))
 	end
-	if idx.truncated then
-		add("index limit reached", "warning")
+	if idx.note then
+		add("partly indexed: " .. idx.note, "warning")
+	elseif idx.truncated then
+		add("partly indexed, folder too big", "warning")
+	end
+	if state.problem then
+		add("search " .. state.problem, "error")
 	end
 	if state.partial then
 		add("search cut short, type more", "warning")
@@ -685,10 +821,12 @@ tern.block.define("search", {
 			sel = 1,
 			matched = 0,
 			partial = false,
+			problem = nil,
 			recent = true,
 			cache = nil,
 			timer = nil,
 			last = 0,
+			took = 0,
 			closed = false,
 			handoff = args[2] == "handoff",
 			browsing = false,

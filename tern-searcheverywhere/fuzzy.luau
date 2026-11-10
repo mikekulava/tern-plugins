@@ -9,37 +9,54 @@
 
 local fuzzy = {}
 
-local find, sub, byte, lower = string.find, string.sub, string.byte, string.lower
+local find, sub, byte, lower, upper = string.find, string.sub, string.byte, string.lower, string.upper
 
 export type Query = {
 	text: string,
 	lower: string,
-	-- One-byte strings of `lower`.
+	-- One-byte strings of `lower`, and the uppercase form of each letter (false otherwise).
 	chars: { string },
+	upper: { string | false },
 	n: number,
 }
 
 function fuzzy.query(text: string): Query
 	local l = lower(text)
 	local chars = table.create(#l)
+	local uppers = table.create(#l)
 	for i = 1, #l do
-		chars[i] = sub(l, i, i)
+		local c = sub(l, i, i)
+		local u = upper(c)
+		chars[i] = c
+		uppers[i] = if u ~= c then u else false
 	end
-	return { text = text, lower = l, chars = chars, n = #l }
+	return { text = text, lower = l, chars = chars, upper = uppers, n = #l }
 end
 
--- Whether the query's characters occur in `l` (a lowercase candidate) in order.
-function fuzzy.has(l: string, q: Query): boolean
-	local p = 1
-	local chars = q.chars
-	for i = 1, q.n do
-		local f = find(l, chars[i], p, true)
-		if f == nil then
-			return false
+-- How many of the query's characters, from the `from`th on, occur in `s` in order, each
+-- taken as early as possible (so the query matches when that reaches its end). With
+-- `cased`, `s` may hold them in either case; without, `s` has no uppercase letters.
+function fuzzy.consume(s: string, q: Query, from: number, cased: boolean): number
+	local chars, uppers, n = q.chars, q.upper, q.n
+	local pos, j = 1, from
+	while j <= n do
+		local f = find(s, chars[j], pos, true)
+		if cased then
+			local u = uppers[j]
+			if u then
+				local g = find(s, u, pos, true)
+				if g and (f == nil or g < f) then
+					f = g
+				end
+			end
 		end
-		p = f + 1
+		if f == nil then
+			break
+		end
+		pos = f + 1
+		j += 1
 	end
-	return true
+	return j - from
 end
 
 local function is_lower(b: number): boolean

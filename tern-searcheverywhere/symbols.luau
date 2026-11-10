@@ -81,8 +81,13 @@ local function strip_words(s: string, words: { [string]: boolean }): string
 	end
 end
 
--- Lines with their 1-based numbers; a trailing `\r` is dropped.
-local function each_line(text: string, fn: (line: string, n: number) -> ())
+-- Lines longer than this hold no declaration worth listing (minified or generated code),
+-- and the line patterns can take quadratic time on them: they are skipped.
+local LONG_LINE = 2000
+
+-- Calls `fn` with each line and its 1-based number (a trailing `\r` dropped). A line over
+-- LONG_LINE goes to `long(first, last)` instead, as a byte range of `text`, when given.
+local function each_line(text: string, fn: (line: string, n: number) -> (), long: ((first: number, last: number) -> ())?)
 	local pos, n, len = 1, 0, #text
 	while pos <= len do
 		local e = find(text, "\n", pos, true)
@@ -91,7 +96,11 @@ local function each_line(text: string, fn: (line: string, n: number) -> ())
 			stop -= 1
 		end
 		n += 1
-		fn(sub(text, pos, stop), n)
+		if stop - pos < LONG_LINE then
+			fn(sub(text, pos, stop), n)
+		elseif long then
+			long(pos, stop)
+		end
 		if e == nil then
 			break
 		end
@@ -126,18 +135,26 @@ local function blank_strings(code: string, single: boolean, backtick: boolean): 
 	if find(code, "\\", 1, true) then
 		code = gsub(code, "\\.", "")
 	end
-	code = gsub(code, '"[^"]*"', '""')
-	if single then
+	if find(code, '"', 1, true) then
+		code = gsub(code, '"[^"]*"', '""')
+	end
+	if single and find(code, "'", 1, true) then
 		code = gsub(code, "'[^']*'", "''")
 	end
-	if backtick then
+	if backtick and find(code, "`", 1, true) then
 		code = gsub(code, "`[^`]*`", "``")
 	end
 	return code
 end
 
-local function count(s: string, ch: string): number
-	local _, n = gsub(s, ch, "")
+-- Occurrences of the byte `ch` in `s` from `first` to `last` (default: all of it).
+local function count(s: string, ch: string, first: number?, last: number?): number
+	local n, stop = 0, last or #s
+	local at = find(s, ch, first or 1, true)
+	while at and at <= stop do
+		n += 1
+		at = find(s, ch, at + 1, true)
+	end
 	return n
 end
 
@@ -205,6 +222,14 @@ local function brace_lang(
 		depth = math.max(0, depth + opens - closes)
 		while #stack > 0 and stack[#stack].depth >= depth do
 			table.remove(stack)
+		end
+	end, function(first: number, last: number)
+		-- A long line declares nothing we list; its braces still move the depth.
+		if not in_comment then
+			depth = math.max(0, depth + count(text, "{", first, last) - count(text, "}", first, last))
+			while #stack > 0 and stack[#stack].depth >= depth do
+				table.remove(stack)
+			end
 		end
 	end)
 end
@@ -586,6 +611,12 @@ end
 -- C, C++ and Objective-C.
 local C_SKIP = set("return if else while for switch case do goto using static_assert public private protected friend")
 local C_MODS = set("static inline extern const constexpr virtual explicit unsigned signed volatile struct enum class union typename mutable")
+-- Whether what follows `struct name` can start its body: nothing (the brace comes on the
+-- next line), `{`, a base list (`: Base`) or `final`.
+local function opens_body(rest: string): boolean
+	return rest == "" or rest == "final" or match(rest, "^{") ~= nil or match(rest, "^:[^:]") ~= nil
+		or match(rest, "^final[%s{]") ~= nil
+end
 local function c(s: string, ctx: Ctx)
 	local macro = match(s, "^#%s*define%s+([%a_][%w_]*)")
 	if macro then
@@ -600,12 +631,24 @@ local function c(s: string, ctx: Ctx)
 		ctx.open = { name = name :: string, kind = "namespace" }
 		return
 	end
-	if (kw == "struct" or kw == "class" or kw == "union") and not find(s, "[;(]") then
-		return emit_type(ctx, name :: string, if kw == "class" then "class" else "struct", true)
+	-- `struct foo`, `struct foo {` or `class Foo : Base`, not a use such as a parameter
+	-- (`struct foo *bar)`), which is common enough in C to crowd out real declarations.
+	if kw == "struct" or kw == "class" or kw == "union" then
+		if opens_body(match(s, "^%a+%s+[%a_][%w_]*%s*(.-)%s*$") or "") then
+			return emit_type(ctx, name :: string, if kw == "class" then "class" else "struct", true)
+		end
 	end
-	if kw == "enum" and not find(s, ";", 1, true) then
-		local ename = match(s, "^enum%s+class%s+([%a_][%w_]*)") or match(s, "^enum%s+struct%s+([%a_][%w_]*)") or name
-		return emit_type(ctx, ename :: string, "enum")
+	if kw == "enum" then
+		local ename, rest = match(s, "^enum%s+class%s+([%a_][%w_]*)%s*(.-)%s*$")
+		if ename == nil then
+			ename, rest = match(s, "^enum%s+struct%s+([%a_][%w_]*)%s*(.-)%s*$")
+		end
+		if ename == nil then
+			ename, rest = name, match(s, "^enum%s+[%a_][%w_]*%s*(.-)%s*$")
+		end
+		if opens_body(rest or "") then
+			return emit_type(ctx, ename :: string, "enum")
+		end
 	end
 	if kw == "typedef" then
 		local tname = match(s, "([%a_][%w_]*)%s*;$") or match(s, "%(%s*%*%s*([%a_][%w_]*)%s*%)")

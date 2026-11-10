@@ -24,8 +24,8 @@ tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-searcheverywhe
 
 - The folder is the focused pane's working directory, or the folder of the file it shows.
 - Files come from `git ls-files` (tracked and untracked, without ignored ones) inside a git
-  checkout. Elsewhere the folder is walked, skipping hidden directories, `node_modules`,
-  virtualenvs and build output.
+  checkout, else from `find`, else (Windows) a walk in Luau, skipping hidden directories,
+  `node_modules`, virtualenvs and build output.
 - Declarations are read from Python, JavaScript/TypeScript, Go, Rust, Lua/Luau, Ruby,
   Java, C#, Dart, Kotlin, Scala, Swift, C/C++, PHP and shell files. Only top-level
   declarations and members of classes, structs, traits and the like count, not locals.
@@ -60,13 +60,33 @@ footer, and drops it when the bar closes. The block reports how many list lines 
 in its title (`Search Everywhere · results 8`), and the window half resizes the sheet on
 each `title` event. `host.luau` is the block: the query, ranking and view. `index.luau`
 lists and reads files in 25 ms slices so the bar stays live while it indexes, keeps an
-index per folder while the host runs (four folders), and rebuilds it in the background
-when the bar opens 20 s or more after the last build. `symbols.luau` finds declarations
+index per folder while the host runs, and rebuilds it in the background when the bar opens
+after 20 s, or after ten times what the last build took. `symbols.luau` finds declarations
 line by line per language (brace depth or indentation decides what is top level);
 `fuzzy.luau` scores names.
 
-Limits: 200,000 files, 500,000 declarations, files up to 1 MiB. Picks on this machine are
-opened by the window half so the file takes focus; on a remote host the block opens them.
+### Big folders
+
+A plugin's Luau heap in Tern holds 256 MiB, garbage included, and nothing can force a
+collection, so the index is built to stay small whatever the folder (a home folder, `/`,
+the Linux kernel):
+
+- A file costs its name plus 4 bytes, a declaration its name plus 13 bytes (file, line,
+  owner and kind live in byte buffers); folder paths and owner names are stored once.
+- All folders' indexes together stay under about 72 MiB. Past that, folders no open bar
+  shows are dropped, least recently used first; then the index stops growing and the bar
+  says **partly indexed, folder too big**. Files nearest the folder are listed and read
+  first, so a cut keeps them: a listing too big for one read is redone shallower.
+- Files over 1 MiB, binary files and lines over 2,000 characters (minified code) aren't
+  read for declarations, and one file adds at most 2,000 of them.
+- If memory runs out anyway, the index keeps what it has and the bar stays usable;
+  later builds use a smaller budget.
+
+On the Linux kernel (97k files) the whole file list and about 530k declarations fit, in
+about 25 s, with the heap peaking near 120 MiB.
+
+Picks on this machine are opened by the window half so the file takes focus; on a remote
+host the block opens them.
 
 ## Develop
 
