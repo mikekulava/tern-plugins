@@ -39,6 +39,20 @@ Todo + Jira, a fork of someone else's plugin, keeps its code in its own reposito
       <p align="center"><sub>Connect Jira, pick the project and board</sub></p>
     </td>
   </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3><a href="tern-omp-sessions">omp Sessions</a></h3>
+      <p>Every omp session on the machine as a folder tree, not just the ones started in the
+      folder you're in. Filter by title or folder, see each session's size and age, and
+      resume one in a new tab or a split.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3><a href="tern-git-identity">Git Identity</a></h3>
+      <p>Pick which git user a repository commits as, from the identities on the machine or
+      a new one you add. It sets the repository's own <code>user.name</code> and
+      <code>user.email</code>, so Tern's git block, agents and the terminal all use it.</p>
+    </td>
+  </tr>
 </table>
 
 ## Install
@@ -46,17 +60,21 @@ Todo + Jira, a fork of someone else's plugin, keeps its code in its own reposito
 ```sh
 tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-searcheverywhere
 tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-testview
+tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-omp-sessions
+tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-git-identity
 tern plugin install github.com/sneaky-bulgarian/tern-todo
 ```
 
 `tern plugin list` shows what loaded; `tern plugin remove <id>` takes one out again.
-Built and tested with Tern 0.9.12.
+Built and tested with Tern 0.9.12; omp Sessions and Git Identity with 0.9.13.
 
 | Plugin | Opens with | What it does |
 | --- | --- | --- |
 | [Search Everywhere](tern-searcheverywhere) | <kbd>⇧</kbd> <kbd>⇧</kbd> | Files and declarations in 17 languages, indexed in the background |
 | [Test Explorer](tern-testview) | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>U</kbd>, or by itself when tests run in a pane | Test tree, run all / file / one / failed, traces with source; follows agents' pytest and unittest runs |
 | [Todo + Jira](tern-todo) | **Todo: open tasks** in the palette | Tasks that open omp sessions in panes; the active Jira sprint as tickets, closed in Jira when their tasks are done |
+| [omp Sessions](tern-omp-sessions) | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>H</kbd>, **sessions** in the status line, or the Files pane's clock button | omp sessions from every folder as a tree, with filter, size and age; resume in a tab or split |
+| [Git Identity](tern-git-identity) | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>Y</kbd>, **git user** in the status line, or the Files pane's person button | Choose or add the git user a repository commits as |
 
 ## Develop
 

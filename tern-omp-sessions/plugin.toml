@@ -1,0 +1,14 @@
+schema = 1
+id = "omp-sessions"
+name = "omp Sessions"
+version = "0.1.0"
+description = "Browse every omp session as a folder tree and resume any of them."
+icon = "history"
+host = "host.luau"
+window = "window.luau"
+styles = ["styles.css"]
+
+[[blocks]]
+id = "browser"
+title = "omp Sessions"
+palette = false
