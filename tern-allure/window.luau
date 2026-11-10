@@ -120,8 +120,9 @@ local function has_results(cwd: string): boolean
 end
 
 tern.chrome.status(function(pane: StatusPaneInfo): { StatusSegment }?
-	if pane.block == KIND or pane.cwd == nil or pane.cwd == "" or not has_results(pane.cwd :: string) then
+	if pane.block == KIND then
 		return nil
 	end
-	return { { text = "Allure", icon = "chart", command = "plugin.allure.open" } }
+	local found = pane.cwd ~= nil and pane.cwd ~= "" and has_results(pane.cwd :: string)
+	return { { text = "Allure", icon = "chart", tone = if found then nil else "muted", command = "plugin.allure.open" } }
 end)

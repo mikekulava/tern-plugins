@@ -20,8 +20,9 @@ tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-allure
 
 - Palette: **Open Allure report** (<kbd>⇧</kbd><kbd>⌘</kbd><kbd>J</kbd>) opens it beside the focused
   pane, for that pane's workspace, or focuses the report already showing it.
-- Status line: click **Allure**, shown when the focused pane's folder (or one above it, up to the git
-  checkout) has `allure-results`, `build/allure-results` or `target/allure-results`.
+- Status line: click **Allure** (shown when Settings › Status line is on). It is dimmed unless the
+  focused pane's folder, or one above it up to the git checkout, has `allure-results`,
+  `build/allure-results` or `target/allure-results`.
 - Files pane: the chart button in its header opens the report for the selected folder. An
   `allure-results` folder opens on its own, unless a report of its workspace is open, which then
   moves to that folder's newest launch. **Open with Allure Report** on a `*-result.json` file opens
