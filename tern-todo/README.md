@@ -2,7 +2,8 @@
 
 **Your Jira sprint as a to-do list in [Tern](https://docs.stencil.so/tern/).** The Tickets tab
 lists your board's active sprint. Enter hands a ticket to an omp agent in a tab of its own,
-and when you mark the task done, the issue moves to Done in Jira.
+and when you mark the task done, the issue moves to Done in Jira. A task you write yourself
+goes to Jira from its card.
 
 <p align="center">
   <img src="docs/tickets.gif" alt="The Tickets tab lists WEB Sprint 24; Start on WEB-412 opens an omp agent in a new tab, which finds and fixes the checkout bug; back in Todo, Go to task, then Mark as done closes the agent's pane, a toast says Closed WEB-412 in Jira, and the ticket shows Done" width="100%">
@@ -44,7 +45,8 @@ Open the **Tickets** tab (or press `T` on Tasks) and fill in the form:
 - **Jira Data Center**: the server URL, no email, and a personal access token.
 
 Connect checks the credentials against Jira before it saves anything. The token goes to
-the system keychain; the URL, email, project and board stay in the plugin's `kv.json`.
+the system keychain; the URL, email, project and board stay in the plugin's `kv.json`, with
+the project and component that tasks post to.
 Then pick the project and its board (a project with a single board picks it for you).
 
 ## Use
@@ -72,6 +74,29 @@ Then pick the project and its board (a project with a single board picks it for 
   An issue that is already done is left alone. If Jira refuses, a toast says why and the
   ticket's card offers **Close in Jira**.
 
+## Post a task to Jira
+
+<p align="center">
+  <img src="docs/post.png" alt="A new task, Coupon field on the checkout page, with notes; its card lists Priority, then Agent rows for Model, Thinking, Project and Chat, then Jira rows with Project Acme Web and Component Checkout, above the buttons Add and post to Jira and Add task" width="100%">
+</p>
+
+The task card lays its controls out in labelled rows: the task's priority, then the agent
+that runs it (model, thinking level, project folder, chat), then Jira. While Jira is
+connected, an open task without an issue gets two Jira rows:
+
+- **Project** and **Component** say where the issue goes. With nothing saved, they
+  preselect the Tickets tab's project (else the first project Jira lists) and that
+  project's first component. Your first pick, or your first post, becomes the default and
+  stays until you pick another. Each project keeps its own component; **No component** is a
+  choice too.
+- **Post to Jira** creates the issue: the title is its summary, the notes its description,
+  and its type is Task (else the project's first standard type). The task is then linked:
+  its card and row show the key, and marking it done closes the issue like any linked task.
+- A new task's card takes notes too. **Add and post to Jira** adds the task and posts it in
+  one go; **Add task** (or Enter in the add row) only adds it.
+
+If Jira refuses, say for a required field, a toast quotes its reason and the task stays local.
+
 ## How it works
 
 Host halves can't reach the keychain, so the window half, `jira.luau`, talks to Jira. The
@@ -80,7 +105,10 @@ block asks with `cx:open("todo-jira:<op>?…")`, a link only this plugin's windo
 token: Connect reads it off the block's masked field. The calls are REST v2 and Agile 1.0,
 which Cloud and Data Center both serve: `myself` to check the sign-in, `project/search`,
 `board?projectKeyOrId=`, `board/{id}/sprint?state=active`, `sprint/{id}/issue` and
-`issue/{key}/transitions`. Requests time out after 20 s; lists stop at 20 pages of 50.
+`issue/{key}/transitions`; posting adds `project/{key}/components`,
+`project/{key}?expand=issueTypes` and `POST issue`. Requests time out after 20 s; lists stop
+at 20 pages of 50. Every window of the block's window key gets its links, so the first one
+to take a post claims it in `kv.json` and the issue is created once.
 
 Linked tasks keep `"jira": {"key": "WEB-412", "url": "…/browse/WEB-412"}` in the task file.
 The done hook sits in the plugin's file writer, so it fires once for each task that turns
