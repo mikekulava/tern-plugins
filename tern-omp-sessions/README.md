@@ -5,6 +5,10 @@ omp's resume picker lists only the sessions started in the folder you're in. Thi
 all of them, grouped by the folder each one was started in, and resumes any of them in a new
 tab or a split.
 
+<p align="center">
+  <img src="docs/demo.gif" alt="Filtering the session tree by folder, then by a session's title, and jumping to the match" width="100%">
+</p>
+
 ## Install
 
 ```sh

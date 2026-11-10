@@ -45,12 +45,14 @@ Todo + Jira, a fork of someone else's plugin, keeps its code in its own reposito
       <p>Every omp session on the machine as a folder tree, not just the ones started in the
       folder you're in. Filter by title or folder, see each session's size and age, and
       resume one in a new tab or a split.</p>
+      <a href="tern-omp-sessions"><img src="tern-omp-sessions/docs/demo.gif" alt="Filtering the session tree and jumping to a match"></a>
     </td>
     <td width="50%" valign="top">
       <h3><a href="tern-git-identity">Git Identity</a></h3>
       <p>Pick which git user a repository commits as, from the identities on the machine or
       a new one you add. It sets the repository's own <code>user.name</code> and
       <code>user.email</code>, so Tern's git block, agents and the terminal all use it.</p>
+      <a href="tern-git-identity"><img src="tern-git-identity/docs/demo.gif" alt="Adding a git identity and switching a repository to it"></a>
     </td>
   </tr>
 </table>

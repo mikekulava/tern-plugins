@@ -4,6 +4,10 @@
 Pick one of the identities on this machine or add a new one, and the repository's commits
 use it, whether they come from Tern's git block, an omp agent or the terminal.
 
+<p align="center">
+  <img src="docs/demo.gif" alt="Adding a new git identity and switching a repository to commit as it" width="100%">
+</p>
+
 ## Install
 
 ```sh
