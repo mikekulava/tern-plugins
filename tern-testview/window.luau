@@ -41,6 +41,11 @@ tern.command({
 
 tern.bind("cmd+shift+u", "plugin.testview.open")
 
+-- A clickable launcher in the status line.
+tern.chrome.status(function(_pane: StatusPaneInfo): { StatusSegment }?
+	return { { text = "Tests", icon = "list-checks", command = "plugin.testview.open" } }
+end)
+
 -- ---------------------------------------------------------------- following runs in panes
 
 local function following(): boolean

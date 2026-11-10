@@ -35,6 +35,7 @@ and build output).
   that pane's directory.
 - Files pane: **Open with Test Explorer** on a test file opens it with that
   file selected.
+- Status line: click **Tests** (shown when Settings › Status line is on).
 - **Runs in panes, by agents too**: a pytest or unittest run in a pane opened while the
   plugin is loaded shows in the explorer of its workspace, or opens one beside that pane
   without taking focus. That covers agents running tests through their shell tools

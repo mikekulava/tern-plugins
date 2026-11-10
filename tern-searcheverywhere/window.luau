@@ -188,3 +188,8 @@ tern.files.button({
 		open(cx, files.root)
 	end,
 })
+
+-- A clickable launcher in the status line.
+tern.chrome.status(function(_pane: StatusPaneInfo): { StatusSegment }?
+	return { { text = "Search", icon = "search", command = "plugin.searcheverywhere.open" } }
+end)

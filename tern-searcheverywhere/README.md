@@ -36,6 +36,7 @@ tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-searcheverywhe
   while it shows closes it. Tern's double-tap shortcuts don't tell left Shift from right,
   so either Shift works; rebind it in Settings › Keyboard.
 - Files pane: the search button in its header searches that folder.
+- Status line: click **Search** (shown when Settings › Status line is on).
 
 | Key | Does |
 | --- | --- |
@@ -52,8 +53,8 @@ hump, then looser ones; one typed character matches name starts only. The best 1
 
 ## How it works
 
-`window.luau` registers the command (default chord `shift>shift`) and the Files pane
-button, and opens the `search` block with `how = "glimpse"`. Tern draws a glimpse over the
+`window.luau` registers the command (default chord `shift>shift`), the Files pane
+button and a status line segment, and opens the `search` block with `how = "glimpse"`. Tern draws a glimpse over the
 whole tab and has no selector for one block's glimpse, so while the bar shows the window
 half installs a sheet (`tern.css`) that sizes every glimpse and hides its header and
 footer, and drops it when the bar closes. The block reports how many list lines it shows
