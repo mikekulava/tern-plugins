@@ -21,10 +21,12 @@ macOS has it with Xcode's command line tools, Homebrew's `python3` is used first
 
 ## Open it
 
-- Palette: **Databases**, or <kbd>⌥</kbd><kbd>⇧</kbd><kbd>⌘</kbd><kbd>D</kbd>. It opens beside
-  the focused pane, or shows the one already open.
+- Status line: click **Databases** (shown when Settings › Status line is on).
+- Palette: **Databases**, or <kbd>⌥</kbd><kbd>⇧</kbd><kbd>⌘</kbd><kbd>D</kbd>.
 - Files pane: **Open with Databases** on a `.db`, `.sqlite`, `.sqlite3` or `.db3` file adds it
   as a SQLite connection and opens it.
+
+The status line and the palette open it beside the focused pane, or show the one already open.
 
 ## Connections
 

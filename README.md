@@ -88,7 +88,7 @@ Built and tested with Tern 0.9.12; omp Sessions and Git Identity with 0.9.13; Da
 | [Todo + Jira](tern-todo) | **Todo: open tasks** in the palette | Tasks that open omp sessions in panes; the active Jira sprint as tickets, closed in Jira when their tasks are done |
 | [omp Sessions](tern-omp-sessions) | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>H</kbd>, **sessions** in the status line, or the Files pane's clock button | omp sessions from every folder as a tree, with filter, size and age; resume in a tab or split |
 | [Git Identity](tern-git-identity) | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>Y</kbd>, **git user** in the status line, or the Files pane's person button | Choose or add the git user a repository commits as |
-| [Databases](tern-databases) | <kbd>⌥</kbd><kbd>⇧</kbd><kbd>⌘</kbd><kbd>D</kbd>, **Databases** in the palette, or **Open with Databases** on a SQLite file | Connections to PostgreSQL, SQLite, Trino and Redis with keychain passwords; tables and keys, completion, results; a `?` line asks the session's agent for the query |
+| [Databases](tern-databases) | <kbd>⌥</kbd><kbd>⇧</kbd><kbd>⌘</kbd><kbd>D</kbd>, **Databases** in the status line, or **Open with Databases** on a SQLite file | Connections to PostgreSQL, SQLite, Trino and Redis with keychain passwords; tables and keys, completion, results; a `?` line asks the session's agent for the query |
 
 ## Develop
 

@@ -5,7 +5,7 @@
 -- block's own masked field, so it never travels in a link), `forget` deletes it, and `ask`
 -- hands a prompt to an agent in the block's session (starting one beside the block when
 -- there is none) and sends back its answer. Answers are events to the asking block's pane.
--- Also: the palette command that opens the block.
+-- Also: the palette command that opens the block, and its launcher in the status line.
 
 local link = require("./link")
 
@@ -271,3 +271,8 @@ tern.command({
 		cx:new_block(KIND, {}, "beside")
 	end,
 })
+
+-- A clickable launcher in the status line, as the palette command opens it.
+tern.chrome.status(function(_pane: StatusPaneInfo): { StatusSegment }?
+	return { { text = "Databases", icon = "database", command = "plugin.databases.open" } }
+end)
