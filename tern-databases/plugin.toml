@@ -1,0 +1,14 @@
+schema = 1
+id = "databases"
+name = "Databases"
+version = "0.1.0"
+description = "Connections to PostgreSQL, SQLite, Trino and Redis with their passwords in the system keychain: browse tables and keys, write queries with autocomplete, or have the session's agent write them."
+icon = "database"
+host = "host.luau"
+window = "window.luau"
+styles = ["databases.css"]
+
+[[blocks]]
+id = "console"
+title = "Databases"
+files = ["*.sqlite", "*.sqlite3", "*.db", "*.db3"]
