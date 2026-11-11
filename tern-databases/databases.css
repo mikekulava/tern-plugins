@@ -1,0 +1,18 @@
+/* The workspace split fills the height under the head row, however long the explorer's list
+   is: the region stacks its parts as a flex column, and the split takes what is left (its own
+   minimum, its content, would otherwise make the page taller than the pane). The panes then
+   scroll inside themselves. */
+.sf-main[data-surface='plugin.databases.console'] {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+}
+
+.sf-main[data-surface='plugin.databases.console'] > .sf-split {
+	flex: 1 1 0;
+	min-height: 0;
+}
+
+.sf-main[data-surface='plugin.databases.console'] > .sf-split > .sf-split-box {
+	height: 100%;
+}

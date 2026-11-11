@@ -55,6 +55,16 @@ Todo + Jira, a fork of someone else's plugin, keeps its code in its own reposito
       <a href="tern-git-identity"><img src="tern-git-identity/docs/demo.gif" alt="Adding a git identity and switching a repository to it"></a>
     </td>
   </tr>
+  <tr>
+    <td colspan="2" valign="top">
+      <h3><a href="tern-databases">Databases</a></h3>
+      <p>Saved connections to PostgreSQL, SQLite, Trino and Redis, their passwords in the
+      system keychain. Browse tables and keys, write queries with completion, cancel them on
+      the server, or write a <code>?</code> line and the agent of your session writes the
+      query in the editor.</p>
+      <a href="tern-databases"><img src="tern-databases/docs/console.png" alt="Tables of a PostgreSQL connection, a query with a ? request line and column completion, and its results"></a>
+    </td>
+  </tr>
 </table>
 
 ## Install
@@ -64,11 +74,12 @@ tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-searcheverywhe
 tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-testview
 tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-omp-sessions
 tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-git-identity
+tern plugin install github.com/sneaky-bulgarian/tern-plugins/tern-databases
 tern plugin install github.com/sneaky-bulgarian/tern-todo
 ```
 
 `tern plugin list` shows what loaded; `tern plugin remove <id>` takes one out again.
-Built and tested with Tern 0.9.12; omp Sessions and Git Identity with 0.9.13.
+Built and tested with Tern 0.9.12; omp Sessions and Git Identity with 0.9.13; Databases with 0.9.14.
 
 | Plugin | Opens with | What it does |
 | --- | --- | --- |
@@ -77,6 +88,7 @@ Built and tested with Tern 0.9.12; omp Sessions and Git Identity with 0.9.13.
 | [Todo + Jira](tern-todo) | **Todo: open tasks** in the palette | Tasks that open omp sessions in panes; the active Jira sprint as tickets, closed in Jira when their tasks are done |
 | [omp Sessions](tern-omp-sessions) | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>H</kbd>, **sessions** in the status line, or the Files pane's clock button | omp sessions from every folder as a tree, with filter, size and age; resume in a tab or split |
 | [Git Identity](tern-git-identity) | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>Y</kbd>, **git user** in the status line, or the Files pane's person button | Choose or add the git user a repository commits as |
+| [Databases](tern-databases) | <kbd>⌥</kbd><kbd>⇧</kbd><kbd>⌘</kbd><kbd>D</kbd>, **Databases** in the palette, or **Open with Databases** on a SQLite file | Connections to PostgreSQL, SQLite, Trino and Redis with keychain passwords; tables and keys, completion, results; a `?` line asks the session's agent for the query |
 
 ## Develop
 
